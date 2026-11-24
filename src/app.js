@@ -138,6 +138,11 @@ function toolPage(tool) {
       scale.disabled = method.value === 'ai';
     });
   }
+  if (tool.id === 'pdf-to-word') {
+    form.elements.wordMode.addEventListener('change', () => {
+      form.elements.ocr.disabled = form.elements.wordMode.value === 'visual';
+    });
+  }
   if (tool.id === 'scan-photos') {
     form.elements.limitScan.addEventListener('change', () => {
       form.elements.pdfMB.disabled = !form.elements.limitScan.checked;

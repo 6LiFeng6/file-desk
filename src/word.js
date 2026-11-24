@@ -2,6 +2,7 @@ import { PDFDocument } from 'pdf-lib';
 import { basename } from './rules.js';
 import { disposeCanvas, toBlob, transformImage } from './images.js';
 import { jpegPage, pdfBlob, readPdf, renderPage } from './pdf.js';
+import { editableWordPage, positionedDocx, scannedWordPage, visualWordPage } from './pdf-word-layout.js';
 
 export async function wordToPdf(file, progress = () => {}) {
   const [{ renderAsync }, { default: capture }] = await Promise.all([
@@ -118,39 +119,66 @@ export async function pdfToWord(file, options, progress) {
   const pdf = await readPdf(file);
   let worker;
   let workerProgress = () => {};
+  const mode = options.wordMode ?? 'layout';
   try {
     const pages = [];
     let scans = 0;
     let missing = 0;
+    let visualPages = 0;
     for (let index = 1; index <= pdf.numPages; index++) {
       const base = (index - 1) / pdf.numPages;
       progress(base, '正在读取 PDF 第 ' + index + ' 页');
       const page = await pdf.getPage(index);
+      if (mode === 'visual') {
+        pages.push(await visualWordPage(page));
+        continue;
+      }
       const contents = await page.getTextContent();
       let text = textFromPdf(contents.items);
+      let positioned;
+      if (text && mode === 'layout') {
+        positioned = await editableWordPage(page, contents).catch(() => null);
+      }
       if (!text && options.ocr !== 'off') {
         workerProgress = (fraction, status) => progress(base + fraction / pdf.numPages, status + ' · 第 ' + index + ' 页');
         worker ??= await createOcr(options.ocr === 'eng' ? ['eng'] : ['chi_sim', 'eng'], (...data) => workerProgress(...data));
         const { rendered } = await renderPage(page, 2.3);
         try {
-          const result = await worker.recognize(rendered);
+          const result = await worker.recognize(rendered, {}, { text: true, blocks: mode === 'layout' });
           text = result.data.text.trim();
           scans++;
+          if (text && mode === 'layout') {
+            const scan = scannedWordPage(page.getViewport({ scale: 1 }), rendered, result.data);
+            if (scan.lines.length) positioned = scan;
+          }
         } finally {
           disposeCanvas(rendered);
         }
       }
       if (!text) missing++;
-      pages.push(text);
+      if (mode === 'text') {
+        pages.push(text);
+      } else if (positioned) {
+        pages.push(positioned);
+      } else {
+        visualPages++;
+        pages.push(await visualWordPage(page));
+      }
       page.cleanup();
     }
-    if (missing === pages.length) {
+    if (mode !== 'visual' && missing === pages.length) {
       throw new Error(options.ocr === 'off' ? '没有找到可提取文字，请开启 OCR 后重试。' : '没有识别到文字，请检查 PDF 的清晰度和所选语言。');
     }
+    const note = mode === 'visual' ? '按原页外观导出，页面内容作为图片保留。' : [
+      scans ? scans + ' 页使用了 OCR。' : '',
+      missing ? missing + ' 页未识别到文字。' : '',
+      visualPages ? visualPages + ' 页以图片保留，文字无法编辑。' : '',
+      mode === 'layout' ? '文字在定位文本框中编辑，表格线和装饰保留在底图。' : '文字按段重新排版。',
+    ].filter(Boolean).join(' ');
     return {
       name: basename(file.name) + '.docx',
-      blob: await makeDocx(pages),
-      note: [scans ? scans + ' 页使用了 OCR。' : '', missing ? missing + ' 页未识别到文字。' : '', '布局、图表和原有样式可能变化。'].join(''),
+      blob: await (mode === 'text' ? makeDocx(pages) : positionedDocx(pages)),
+      note,
     };
   } finally {
     await Promise.allSettled([pdf.destroy(), worker?.terminate()]);

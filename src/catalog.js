@@ -23,7 +23,12 @@ export const workflowFields = { width, height, cropAnchor, photoFormat, photoLim
 
 export const catalog = [
   { id: 'word-to-pdf', title: 'Word 转 PDF', description: '将 .docx 保存为便于查看的 PDF。', category: 'convert', kind: 'word', icon: 'word', color: 'blue', note: '以图像保留页面外观，PDF 中的文字无法直接选取。复杂排版可能存在差异。' },
-  { id: 'pdf-to-word', title: 'PDF 转 Word', description: '提取可编辑文字，支持扫描页识别。', category: 'convert', kind: 'pdf', icon: 'word', color: 'violet', fields: [{ ...scanLanguage, choices: [...languages, ['off', '关闭 OCR']] }], note: '输出可编辑文字。版式、图表和样式可能变化。' },
+  { id: 'pdf-to-word', title: 'PDF 转 Word', description: '保留原页版式，支持扫描页 OCR。', category: 'convert', kind: 'pdf', icon: 'word', color: 'violet', fields: [
+    { type: 'select', key: 'wordMode', label: '转换方式', choices: [
+      ['layout', '保留版式 · 文字可编辑'], ['visual', '保留原样 · 图片版'], ['text', '提取文字 · 段落重排'],
+    ], detail: '图片版适合外观优先的复杂页面。' },
+    { ...scanLanguage, choices: [...languages, ['off', '关闭 OCR']] },
+  ], note: '版式模式可编辑文字框，表格线和图片保留在底图。' },
   { id: 'pdf-merge', title: '合并 PDF', description: '拖动排序，将多个 PDF 合成一份。', category: 'pdf', kind: 'pdf', icon: 'merge', color: 'coral', multiple: true, minimum: 2, reorder: true },
   { id: 'pdf-compress', title: '压缩 PDF', description: '指定 MB 上限，查看压缩结果。', category: 'pdf', kind: 'pdf', icon: 'compress', color: 'green', fields: [pdfLimit], note: '需要进一步压缩时会把页面转为图片，文字将无法选取。结果会标明处理方式。' },
   { id: 'image-upscale', title: '图片放大', description: '放大像素，可选 AI 超分辨率。', category: 'image', kind: 'image', icon: 'upscale', color: 'violet', multiple: true, fields: [
